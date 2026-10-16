@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>autoscene_bringup</name>
+  <version>0.6.0</version>
+  <description>Launch and configuration files for AutoScene ROS1.</description>
+  <maintainer email="autoscene@example.com">AutoScene</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <exec_depend>autoscene_ego</exec_depend>
+  <exec_depend>autoscene_evaluation</exec_depend>
+  <exec_depend>autoscene_experiment</exec_depend>
+  <exec_depend>autoscene_platform</exec_depend>
+  <exec_depend>autoscene_runtime</exec_depend>
+</package>

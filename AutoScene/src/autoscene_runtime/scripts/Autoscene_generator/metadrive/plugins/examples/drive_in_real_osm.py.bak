@@ -1,0 +1,703 @@
+#!/usr/bin/env python
+"""
+This script demonstrates how to use the environment where traffic and road map are loaded from Waymo dataset.
+先在终端中export ROOT_PATH="/home/tian/metadrive_original/metadrive"，改为你自己的路径
+"""
+import argparse
+import copy
+import pickle
+from pathlib import Path
+import sys
+
+import numpy as np
+
+sys.path.append("./")  # add project root dir to path
+from metadrive.component.sensors.depth_camera import DepthCamera
+from metadrive.component.sensors.rgb_camera import RGBCamera
+from metadrive.component.sensors.semantic_camera import SemanticCamera
+from metadrive.constants import DEFAULT_AGENT, HELP_MESSAGE
+from metadrive.engine.asset_loader import AssetLoader
+from metadrive.plugins.envs.osm_env import OSMEnv
+from metadrive.plugins.manager.osm_map_manager import OSMMapIO
+from metadrive.plugins.component.navigation_module.trajectory_navigation_in_osm import OsmTrajectoryNavigation
+from metadrive.plugins.utils.osm_scenario_variant import (
+    build_variant_config,
+    get_available_lane_ids,
+    iter_lane_destination_values,
+)
+from metadrive.scenario.scenario_description import ScenarioDescription as SD
+from metadrive.scenario.utils import convert_recorded_scenario_exported
+import metadrive.engine.top_down_renderer as td_mod
+from metadrive.plugins.engine.top_down_renderer import TopDownRenderer as CustomTopDownRenderer
+td_mod.TopDownRenderer = CustomTopDownRenderer
+
+RENDER_MESSAGE = {
+    "Quit": "ESC",
+    "Switch perspective": "Q or B",
+    "Reset Episode": "R",
+    "Keyboard Control": "W,A,S,D",
+}
+
+
+RELAXED_IDM_CONFIG = {
+    "idm_distance_wanted_m": 4.0,
+    "idm_time_wanted_min_s": 0.4,
+    "idm_time_wanted_max_s": 0.8,
+    "idm_safe_distance_m": 4.0,
+    "idm_emergency_distance_m": 1.8,
+    "idm_max_long_dist_m": 18.0,
+    "idm_forward_lookahead_base_m": 8.0,
+    "idm_forward_lookahead_gain_s": 1.0,
+    "idm_forward_lookahead_max_m": 20.0,
+    "idm_intersection_lookahead_m": 8.0,
+    "idm_intersection_deadlock_wait_steps": 10,
+    "idm_intersection_release_ttc_min_s": 0.5,
+    "idm_intersection_creep_speed_km_h": 10.0,
+}
+
+
+DEFAULT_EGO_VEHICLE_PARAMETERS = {
+    "width": 3.07,
+    "wheel_base": 3.089,
+    "length": 6.076,
+    "cog_position_from_rear_axle": 1.67,
+    "height": 1.777,
+}
+
+
+def parse_bool(value):
+    if isinstance(value, bool):
+        return value
+    value = str(value).lower()
+    if value in ("1", "true", "t", "yes", "y", "on"):
+        return True
+    if value in ("0", "false", "f", "no", "n", "off"):
+        return False
+    raise argparse.ArgumentTypeError(f"Boolean value expected, got {value!r}")
+
+
+def get_map_seed(cfg, variant_index: int) -> int:
+    start = int(cfg.get("start_scenario_index", 0))
+    num_scenarios = max(int(cfg.get("num_scenarios", 1)), 100)
+    return start + int(variant_index) % num_scenarios
+
+
+def save_episode_gif(env, gif_dir: Path, variant_seed: int, duration: int) -> None:
+    if env.top_down_renderer is None or not env.top_down_renderer.screen_frames:
+        return
+    gif_dir.mkdir(parents=True, exist_ok=True)
+    gif_path = gif_dir / f"osm_episode_seed_{variant_seed:04d}.gif"
+    env.top_down_renderer.generate_gif(str(gif_path), duration=duration)
+    env.top_down_renderer._screen_frames = []
+    env.top_down_renderer._success_screen_frames = []
+    print(f"Saved GIF to {gif_path}")
+
+
+def rename_sdc_track(scenario, ego_vehicle_id) -> None:
+    if not ego_vehicle_id:
+        return
+    ego_vehicle_id = str(ego_vehicle_id)
+    metadata = scenario.setdefault("metadata", {})
+    tracks = scenario.get("tracks", {})
+    old_sdc_id = metadata.get("sdc_id")
+    if old_sdc_id is None:
+        return
+    old_sdc_id = str(old_sdc_id)
+    if old_sdc_id == ego_vehicle_id:
+        return
+    if old_sdc_id not in tracks:
+        return
+    if ego_vehicle_id in tracks:
+        raise ValueError(f"Can not rename SDC track {old_sdc_id!r} to existing track id {ego_vehicle_id!r}")
+
+    tracks[ego_vehicle_id] = tracks.pop(old_sdc_id)
+    track_metadata = tracks[ego_vehicle_id].setdefault("metadata", {})
+    track_metadata["object_id"] = ego_vehicle_id
+    track_metadata["original_id"] = ego_vehicle_id
+    metadata["sdc_id"] = ego_vehicle_id
+
+
+def enrich_scenario_metadata(scenario, variant_seed: int) -> None:
+    metadata = scenario.setdefault("metadata", {})
+    metadata["variant_seed"] = int(variant_seed)
+    metadata["ego_vehicle_parameters"] = copy.deepcopy(DEFAULT_EGO_VEHICLE_PARAMETERS)
+    metadata["track_length"] = int(scenario.get("length", 0))
+    metadata.setdefault("dataset", "osm")
+    metadata.setdefault("scenario_id", metadata.get("id", scenario.get("id", f"osm_seed_{variant_seed:04d}")))
+    SD.update_summaries(scenario)
+
+
+def _get_export_dt(scenario) -> float:
+    ts = np.asarray(scenario.get("metadata", {}).get("ts", []), dtype=np.float32)
+    if ts.shape[0] >= 2:
+        dt = float(np.median(np.diff(ts[: min(ts.shape[0], 20)])))
+        if dt > 1e-4:
+            return dt
+    return 0.1
+
+
+def _get_vehicle_export_speed(vehicle, default_speed_mps: float) -> float:
+    config = getattr(vehicle, "config", {}) or {}
+    spawn_velocity = config.get("spawn_velocity")
+    if spawn_velocity is not None and len(spawn_velocity) > 0:
+        try:
+            speed = abs(float(spawn_velocity[0]))
+            if speed > 1e-3:
+                return speed
+        except (TypeError, ValueError):
+            pass
+
+    for key in ("idm_target_speed_km_h", "target_speed_km_h"):
+        if key in config:
+            try:
+                speed = float(config[key]) / 3.6
+                if speed > 1e-3:
+                    return speed
+            except (TypeError, ValueError):
+                pass
+
+    try:
+        speed = abs(float(getattr(vehicle, "speed", 0.0)))
+        if speed > 1e-3:
+            return speed
+    except (TypeError, ValueError):
+        pass
+    return float(default_speed_mps)
+
+
+def _candidate_track_ids(env, vehicle, scenario):
+    candidates = []
+    if vehicle is getattr(env, "agent", None):
+        sdc_id = scenario.get("metadata", {}).get("sdc_id")
+        export_ego_id = env.engine.global_config.get("export_ego_vehicle_id", None)
+        candidates.extend([sdc_id, export_ego_id, DEFAULT_AGENT])
+    candidates.extend([
+        getattr(vehicle, "name", None),
+        getattr(vehicle, "id", None),
+    ])
+    seen = set()
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        candidate = str(candidate)
+        if candidate and candidate not in seen:
+            seen.add(candidate)
+            yield candidate
+
+
+def _iter_export_vehicles(env):
+    seen = set()
+    agent = getattr(env, "agent", None)
+    if agent is not None:
+        seen.add(id(agent))
+        yield agent
+
+    for collection in (
+        getattr(env.engine, "agents", {}),
+        getattr(env.engine, "get_objects", lambda: {})(),
+    ):
+        values = collection.values() if isinstance(collection, dict) else collection
+        for vehicle in values:
+            if id(vehicle) in seen:
+                continue
+            seen.add(id(vehicle))
+            yield vehicle
+
+
+def _resize_state_like(template, new_values):
+    template = np.asarray(template)
+    dtype = template.dtype if template.size > 0 else new_values.dtype
+    result = np.zeros((new_values.shape[0],) + template.shape[1:], dtype=dtype)
+    if template.ndim == 1:
+        result[...] = new_values.astype(dtype, copy=False)
+    else:
+        width = min(result.shape[-1], new_values.shape[-1])
+        result[..., :width] = new_values[..., :width].astype(dtype, copy=False)
+        if template.shape[0] > 0 and result.shape[-1] > width:
+            result[..., width:] = template[0, width:]
+    return result
+
+
+def _sample_reference_track(vehicle, track, horizon: int, dt: float, default_speed_mps: float) -> bool:
+    navigation = getattr(vehicle, "navigation", None)
+    reference_trajectory = getattr(navigation, "_initial_reference_trajectory", None)
+    if reference_trajectory is None:
+        reference_trajectory = getattr(navigation, "reference_trajectory", None)
+    if reference_trajectory is None or float(getattr(reference_trajectory, "length", 0.0) or 0.0) <= 1e-3:
+        return False
+
+    state = track.get("state", {})
+    if "position" not in state or "heading" not in state or "velocity" not in state:
+        return False
+
+    start_position = np.asarray(state["position"][0], dtype=np.float64)[:2]
+    try:
+        start_s, start_l = reference_trajectory.local_coordinates(start_position)
+    except Exception:
+        start_s, start_l = 0.0, 0.0
+    start_s = float(np.clip(start_s, 0.0, reference_trajectory.length))
+    start_l = float(np.clip(start_l, -2.0, 2.0))
+
+    speed = _get_vehicle_export_speed(vehicle, default_speed_mps)
+    arc_lengths = start_s + speed * dt * np.arange(horizon, dtype=np.float64)
+    arc_lengths = np.clip(arc_lengths, 0.0, float(reference_trajectory.length))
+
+    xy = np.asarray(
+        [reference_trajectory.position(float(s), start_l) for s in arc_lengths],
+        dtype=np.float32,
+    )[..., :2]
+    heading = np.asarray(
+        [reference_trajectory.heading_theta_at(float(s)) for s in arc_lengths],
+        dtype=np.float32,
+    )
+    velocity_xy = np.zeros((horizon, 2), dtype=np.float32)
+    if horizon > 1:
+        velocity_xy[:-1] = (xy[1:] - xy[:-1]) / max(dt, 1e-4)
+        velocity_xy[-1] = velocity_xy[-2]
+    reached_end = arc_lengths >= float(reference_trajectory.length) - 1e-3
+    velocity_xy[reached_end] = 0.0
+
+    position_values = np.zeros((horizon, max(3, np.asarray(state["position"]).shape[-1])), dtype=np.float32)
+    position_values[:, :2] = xy
+    old_position = np.asarray(state["position"])
+    if old_position.ndim == 2 and old_position.shape[0] > 0 and old_position.shape[1] > 2:
+        position_values[:, 2 : old_position.shape[1]] = old_position[0, 2 : old_position.shape[1]]
+
+    velocity_values = np.zeros((horizon, max(2, np.asarray(state["velocity"]).shape[-1])), dtype=np.float32)
+    velocity_values[:, :2] = velocity_xy
+
+    state["position"] = _resize_state_like(state["position"], position_values)
+    state["heading"] = _resize_state_like(state["heading"], heading)
+    state["velocity"] = _resize_state_like(state["velocity"], velocity_values)
+    if "valid" in state:
+        state["valid"] = np.ones(horizon, dtype=np.asarray(state["valid"]).dtype)
+    for key in ("length", "width", "height", "radius"):
+        if key in state:
+            values = np.asarray(state[key])
+            if values.shape[0] != horizon and values.shape[0] > 0:
+                state[key] = np.repeat(values[:1], horizon, axis=0)
+    metadata = track.setdefault("metadata", {})
+    metadata["track_source"] = "planned_global_path"
+    metadata["track_length"] = int(horizon)
+    return True
+
+
+def overwrite_tracks_with_planned_global_paths(env, scenario, default_speed_mps: float = 8.0) -> int:
+    if default_speed_mps <= 0.0:
+        return 0
+    tracks = scenario.get("tracks", {})
+    if not tracks:
+        return 0
+
+    horizon = int(max(1, scenario.get("length", 0)))
+    dt = _get_export_dt(scenario)
+    default_speed = float(default_speed_mps)
+    overwritten = 0
+    used_track_ids = set()
+    for vehicle in _iter_export_vehicles(env):
+        track_id = next((tid for tid in _candidate_track_ids(env, vehicle, scenario) if tid in tracks), None)
+        if track_id is None or track_id in used_track_ids:
+            continue
+        if _sample_reference_track(vehicle, tracks[track_id], horizon, dt, default_speed):
+            used_track_ids.add(track_id)
+            overwritten += 1
+    if overwritten:
+        scenario["length"] = horizon
+        print(f"[export planned paths] overwritten_tracks={overwritten}, horizon={horizon}, dt={dt:.3f}")
+    return overwritten
+
+
+def update_dataset_index(scenario_dir: Path, scenario_path: Path, scenario) -> None:
+    summary_path = scenario_dir / SD.DATASET.SUMMARY_FILE
+    mapping_path = scenario_dir / SD.DATASET.MAPPING_FILE
+    file_name = scenario_path.name
+
+    if summary_path.exists():
+        with open(summary_path, "rb") as file:
+            summary = pickle.load(file)
+    else:
+        summary = {}
+
+    if mapping_path.exists():
+        with open(mapping_path, "rb") as file:
+            mapping = pickle.load(file)
+    else:
+        mapping = {}
+
+    summary[file_name] = copy.deepcopy(scenario.get("metadata", {}))
+    mapping[file_name] = ""
+
+    with open(summary_path, "wb") as file:
+        pickle.dump(summary, file)
+    with open(mapping_path, "wb") as file:
+        pickle.dump(mapping, file)
+
+
+def save_scenario_description(
+    env,
+    scenario_dir: Path,
+    variant_seed: int,
+    export_planned_global_paths: bool = True,
+    export_planned_path_speed_mps: float = 8.0,
+) -> None:
+    scenario_dir.mkdir(parents=True, exist_ok=True)
+    episode = env.engine.dump_episode()
+    scenario = convert_recorded_scenario_exported(episode, to_dict=True)
+    rename_sdc_track(scenario, env.engine.global_config.get("export_ego_vehicle_id", None))
+    if export_planned_global_paths:
+        overwrite_tracks_with_planned_global_paths(env, scenario, export_planned_path_speed_mps)
+    enrich_scenario_metadata(scenario, variant_seed)
+    scenario_path = scenario_dir / f"sd_osm_v1_seed_{variant_seed:04d}.pkl"
+    with open(scenario_path, "wb") as file:
+        pickle.dump(scenario, file)
+    update_dataset_index(scenario_dir, scenario_path, scenario)
+    print(f"Saved ScenarioDescription to {scenario_path}")
+
+
+def get_osm_feature_ids(cfg):
+    """Read OSM map feature ids without creating an OSMEnv."""
+    parser = OSMMapIO(cfg["osm_file_path"], use_projection=False)
+    return sorted(str(feature_id) for feature_id in parser.parse().keys())
+
+
+def validate_ids_before_probe(cfg, ego_spec, adversary_specs):
+    available_ids = set(get_osm_feature_ids(cfg))
+    missing = []
+    specs = [("ego", ego_spec)] + [(f"adversary[{i}]", spec) for i, spec in enumerate(adversary_specs)]
+    for label, spec in specs:
+        for field, value in iter_lane_destination_values(spec):
+            if str(value) not in available_ids:
+                missing.append(f"{label}.{field}={value}")
+    if missing:
+        preview = " ".join(sorted(available_ids)[:80])
+        raise ValueError(
+            "Configured ids are not in the parsed OSM map features:\n  "
+            + "\n  ".join(missing)
+            + "\nFirst available ids: "
+            + preview
+        )
+
+
+def make_map_probe_cfg(base_cfg, ego_spec):
+    """Create a config that loads the OSM map using a valid ego lane and keeps OSM navigation enabled."""
+    def first_value(value):
+        if isinstance(value, (list, tuple)):
+            if len(value) == 0:
+                raise ValueError("Probe config can not use an empty lane/destination list")
+            return value[0]
+        return value
+
+    probe_cfg = copy.deepcopy(base_cfg)
+    probe_cfg["no_traffic"] = True
+    probe_cfg["no_light"] = True
+
+    probe_vehicle_config = probe_cfg.setdefault("vehicle_config", {})
+    probe_vehicle_config["navigation_module"] = OsmTrajectoryNavigation
+    probe_vehicle_config["spawn_lane_index"] = str(first_value(ego_spec["lane_id"]))
+    probe_vehicle_config["destination"] = str(first_value(ego_spec["destination"]))
+    probe_vehicle_config["spawn_position_heading"] = None
+
+    probe_default_agent = probe_cfg["agent_configs"]["default_agent"]
+    probe_default_agent["spawn_lane_index"] = str(first_value(ego_spec["lane_id"]))
+    probe_default_agent["destination"] = str(first_value(ego_spec["destination"]))
+    probe_default_agent["navigation_module"] = OsmTrajectoryNavigation
+    probe_default_agent["spawn_position_heading"] = None
+    return probe_cfg
+
+
+def build_custom_init_cfg(base_cfg, seed, map_seed=None):
+    """
+    Build one randomized init config for ego + adversarial vehicles.
+
+    Fill the lane/base_s/base_speed fields below with your selected vehicle ids and lane ids.
+    Units:
+        base_s/s_noise: meters along lane.
+        base_l/l_noise: meters lateral to lane center.
+        base_speed: m/s.
+    """
+    ego_spec = {
+        "vehicle_id": "ego",
+        "lane_id": ["67456"
+                    ],  # you can specify multiple lane ids for sampling
+        "base_s": 32.0,
+        "base_l": 0.0,
+        "base_speed": 12.0,
+        "destination": ["63103"
+                        ],
+        "s_noise": [0.0, 0.0],
+        "l_noise": [0, 0],
+        "speed_scale": [0.9, 1.1],
+        "vehicle_config": {
+            **RELAXED_IDM_CONFIG,
+            "idm_target_speed_km_h": 42,
+            "idm_target_speed_min_km_h": 30,
+            "idm_target_speed_max_km_h": 50,
+        },
+    }
+
+    adversary_specs = [
+        {
+            "vehicle_id": "1",
+            "name": "adv_1",
+            "lane_id": ["69456"
+                        ],
+            "base_s": 0.0,
+            "base_l": 0.0,
+            "base_speed": 10.0,
+            "destination": ["63105"
+                ],
+            "s_noise": [0.0, 0.0],
+            "l_noise": [-0.0, 0.0],
+            "speed_scale": [0.9, 1.1],
+            "vehicle_config": {
+                **RELAXED_IDM_CONFIG,
+                "idm_target_speed_km_h": 36,
+                "idm_target_speed_min_km_h": 20,
+                "idm_target_speed_max_km_h": 45,
+            },
+        },
+        {
+            "vehicle_id": "2",
+            "name": "adv_2",
+            "lane_id": ["69456"
+                        ],
+            "base_s": 15.0,
+            "base_l": 0.0,
+            "base_speed": 10.0,
+            "destination": ["63105"
+               ],
+            "s_noise": [-0.0, 0.0],
+            "l_noise": [-0.0, 0.0],
+            "speed_scale": [0.9, 1.1],
+            "vehicle_config": {
+                **RELAXED_IDM_CONFIG,
+                "idm_target_speed_km_h": 10,
+                "idm_target_speed_min_km_h": 5,
+                "idm_target_speed_max_km_h": 20,
+            },
+        },
+    ]
+
+    validate_ids_before_probe(base_cfg, ego_spec, adversary_specs)
+
+    probe_env = None
+    try:
+        probe_env = OSMEnv(make_map_probe_cfg(base_cfg, ego_spec))
+        probe_env.reset(seed=get_map_seed(base_cfg, 0) if map_seed is None else map_seed)
+        road_network = probe_env.engine.current_map.road_network
+
+        cfg = build_variant_config(
+            base_config=base_cfg,
+            road_network=road_network,
+            ego_spec=ego_spec,
+            adversary_specs=adversary_specs,
+            seed=seed,
+        )
+        cfg["export_ego_vehicle_id"] = str(ego_spec["vehicle_id"])
+        return cfg
+    finally:
+        if probe_env is not None:
+            probe_env.close()
+
+
+def print_custom_init_summary(cfg):
+    print("[custom init] default_agent:", cfg["agent_configs"]["default_agent"])
+    print("[custom init] use_custom_adversaries:", cfg.get("use_custom_adversaries"))
+    for adv_cfg in cfg.get("custom_adversaries", []):
+        print(
+            "[custom init] adversary config:",
+            adv_cfg.get("name"),
+            "lane=",
+            adv_cfg.get("spawn_lane_index"),
+            "s=",
+            adv_cfg.get("spawn_longitude"),
+            "pos_heading=",
+            adv_cfg.get("spawn_position_heading"),
+            "destination=",
+            adv_cfg.get("destination"),
+        )
+
+
+def print_spawned_traffic(env):
+    if not hasattr(env.engine, "traffic_manager"):
+        return
+    print("[custom init] spawned traffic vehicles:")
+    for vehicle in env.engine.traffic_manager.traffic_vehicles:
+        print(
+            "  ",
+            vehicle.name,
+            "pos=",
+            vehicle.position,
+            "lane=",
+            getattr(vehicle, "lane_index", None),
+            "speed=",
+            vehicle.speed,
+        )
+
+
+def run_one_variant(base_cfg, args, variant_index: int, extra_render_args) -> None:
+    variant_seed = int(args.variant_seed) + int(variant_index)
+    map_seed = get_map_seed(base_cfg, variant_index)
+    cfg = copy.deepcopy(base_cfg)
+
+    if args.use_custom_init:
+        try:
+            cfg = build_custom_init_cfg(cfg, seed=variant_seed, map_seed=map_seed)
+        except Exception as exc:
+            print(
+                f"[variant {variant_index}] skip: variant_seed={variant_seed}, "
+                f"map_seed={map_seed}, reason={type(exc).__name__}: {exc}"
+            )
+            return
+    else:
+        print(f"[variant {variant_index}] map_seed={map_seed}")
+
+    if args.save_scenarios:
+        cfg["record_episode"] = True
+
+    env = None
+    try:
+        env = OSMEnv(cfg)
+        try:
+            env.reset(seed=map_seed)
+        except Exception as exc:
+            print(
+                f"[variant {variant_index}] skip: variant_seed={variant_seed}, "
+                f"map_seed={map_seed}, reason={type(exc).__name__}: {exc}"
+            )
+            return
+        # if args.use_custom_init:
+        #     print_spawned_traffic(env)
+        track_agent_name = next(
+            (name for name, vehicle in getattr(env.engine, "agents", {}).items() if vehicle is env.agent),
+            "default_agent"
+        )
+
+        step = -1
+        try:
+            for step in range(int(args.max_steps)):
+                _, _, terminated, truncated, info = env.step([1.0, 0.])
+                text = {"Frame": f"{step}", "Seed": variant_seed} if args.top_down else RENDER_MESSAGE
+                env.render(
+                    mode="top_down" if args.top_down else None,
+                    scaling=3,
+                    show_agent_name=True,
+                    show_navigation_path=True,
+                    show_traffic_navigation_paths=True,
+                    current_track_agent=track_agent_name,
+                    window=False,
+                    screen_record=args.save_gif,
+                    text=text,
+                    **extra_render_args
+                )
+                if terminated or truncated:
+                    break
+        except Exception as exc:
+            print(
+                f"[variant {variant_index}] skip: variant_seed={variant_seed}, "
+                f"map_seed={map_seed}, step={step}, reason={type(exc).__name__}: {exc}"
+            )
+            return
+
+        try:
+            if args.save_gif:
+                save_episode_gif(env, args.gif_dir, variant_seed, args.gif_duration)
+            if args.save_scenarios:
+                save_scenario_description(
+                    env,
+                    args.scenario_dir,
+                    variant_seed,
+                    export_planned_global_paths=args.export_planned_global_paths,
+                    export_planned_path_speed_mps=args.export_planned_path_speed_mps,
+                )
+        except Exception as exc:
+            print(
+                f"[variant {variant_index}] skip save: variant_seed={variant_seed}, "
+                f"map_seed={map_seed}, reason={type(exc).__name__}: {exc}"
+            )
+    finally:
+        if env is not None:
+            try:
+                env.close()
+            except Exception as exc:
+                print(
+                    f"[variant {variant_index}] skip close error: variant_seed={variant_seed}, "
+                    f"map_seed={map_seed}, reason={type(exc).__name__}: {exc}"
+                )
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--reactive_traffic", action="store_true")
+    parser.add_argument("--top_down", nargs="?", const=True, default=True, type=parse_bool)
+    parser.add_argument("--waymo", action="store_true")
+    parser.add_argument("--add_sensor", action="store_true")
+    parser.add_argument("--save_gif", nargs="?", const=True, default=True, type=parse_bool)
+    parser.add_argument("--gif_dir", type=Path, default=Path("gif_record1"))
+    parser.add_argument("--gif_duration", type=int, default=30)
+    parser.add_argument("--use_custom_init", nargs="?", const=True, default=True, type=parse_bool)
+    parser.add_argument("--variant_seed", type=int, default=0)
+    parser.add_argument("--num_variants", type=int, default=100)
+    parser.add_argument("--max_steps", type=int, default=100)
+    parser.add_argument("--save_scenarios", nargs="?", const=True, default=False, type=parse_bool)
+    parser.add_argument("--scenario_dir", type=Path, default=Path("scenario_record1"))
+    parser.add_argument("--export_planned_global_paths", nargs="?", const=True, default=True, type=parse_bool)
+    parser.add_argument("--export_planned_path_speed_mps", type=float, default=8.0)
+    parser.add_argument("--list_lanes", action="store_true")
+    args = parser.parse_args() 
+    extra_args = dict(film_size=(2000, 2000)) if args.top_down else {}
+    asset_path = AssetLoader.asset_path
+    use_waymo = args.waymo
+    print(HELP_MESSAGE)
+
+    cfg = {
+        "osm_file_path": "osm_scenario_f703cca42c9650f1_直道单向.osm",
+        "manual_control": False,
+        "map_region_size": 512,  # use a large number if your map is toooooo big
+        "sequential_seed": True,
+        "reactive_traffic": True if args.reactive_traffic else False,
+        "use_render": False,
+        "total_vehicle_count": 5,
+        "traffic_initial_min_spawn_distance_to_ego": 35.0,
+        "max_lateral_dist": 20,
+        "out_of_route_done": False,
+        "enable_idm_lane_change": False,
+        "debug_osm_route": False,
+        "debug_osm_route_all_vehicles": True,
+        "data_directory": '/data_set/nuplan/nuplan', # 没用
+        "num_scenarios":100,
+        "agent_configs": {
+        "default_agent": dict(
+            use_special_color=True,
+            navigation_module=OsmTrajectoryNavigation,
+            spawn_lane_index="-3990",
+            destination="-4351",
+        ),
+    },
+        "vehicle_config": dict(
+            **RELAXED_IDM_CONFIG,
+            idm_target_speed_km_h=20,
+            idm_target_speed_min_km_h=20,
+            idm_target_speed_max_km_h=20,
+            idm_respect_lane_speed_limit=True,
+        ),
+    }
+    if args.add_sensor:
+        additional_cfg = {
+            "interface_panel": ["rgb_camera", "depth_camera", "semantic"],
+            "sensors": {
+                "rgb_camera": (DepthCamera, 256, 256),
+                "depth_camera": (RGBCamera, 256, 256),
+                "semantic": (SemanticCamera, 256, 256)
+            }
+        }
+        cfg.update(additional_cfg)
+
+    if args.list_lanes:
+        lane_ids = get_osm_feature_ids(cfg)
+        print(f"[osm lanes] count={len(lane_ids)}")
+        print("[osm lanes]", " ".join(lane_ids))
+        sys.exit(0)
+
+    for variant_index in range(int(args.num_variants)):
+        run_one_variant(cfg, args, variant_index, extra_args)

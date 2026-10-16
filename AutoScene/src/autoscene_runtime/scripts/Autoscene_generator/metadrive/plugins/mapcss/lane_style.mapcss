@@ -1,0 +1,42 @@
+meta {
+    title: "Custom LaneType Style";
+    version: "1.0";
+    description: "Highlight Driving lanes";
+    author: "Haotian";
+}
+
+/* 默认道路 */
+way {
+    width: 2;
+    color: #808080;
+    opacity: 0.6;
+}
+
+/* Driving车道 */
+way[LaneType=Driving] {
+    width: 5;
+    color: #00A0FF;
+    opacity: 1.0;
+    text: auto;
+}
+
+/* Shoulder */
+way[LaneType=Shoulder] {
+    width: 4;
+    color: #FFD700;
+    opacity: 1.0;
+}
+
+/* Parking */
+way[LaneType=Parking] {
+    width: 4;
+    color: #32CD32;
+    opacity: 1.0;
+}
+
+/* Sidewalk */
+way[LaneType=Sidewalk] {
+    width: 3;
+    color: #FF69B4;
+    opacity: 1.0;
+}

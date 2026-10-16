@@ -1,0 +1,50 @@
+project:
+  experiment_id: exp_sim_001
+
+runtime:
+  mode: simulation
+  world_state_hz: 10
+  frame_id: map
+
+scenario:
+  source: unitraj_pluto
+  unitraj_root: ./src/autoscene_runtime/scripts/Autoscene_generator
+  unitraj_config: ./src/autoscene_runtime/scripts/Autoscene_generator/unitraj/configs/config.yaml
+  dataset_type: tjwest
+  dataset_path: ./data/tjwest260725intersection
+  # simulation 可用 dataset 或 initial；默认 dataset 保持当前无实物仿真基础链路。
+  history_source: dataset
+  render: 2D
+  save_render_png: true
+  render_dir: ./outputs/render_hybrid_1
+  render_every_n_steps: 1
+  render_save_every_n_steps: 5
+
+ego:
+  id: ego_001
+  execution_mode: simulation
+  initial:
+    x: 0.0
+    y: 0.0
+    heading: 0.0
+    speed: 0.0
+
+evaluation:
+  include_background_vehicles: true
+  rate_hz: 10
+  collision_distance_m: 0.0
+  finalize_delay_sec: 0.5
+  auto_export: true
+  output_dir: ./outputs
+  fail_on_invalid_platform: false
+
+record:
+  enable_rosbag: true
+  output_dir: ./outputs
+  topics:
+    - /autoscene/world/state
+    - /autoscene/ego/state
+    - /autoscene/agents/state
+    - /autoscene/scenario/status
+    - /autoscene/simulation/status
+    - /autoscene/evaluation/metrics

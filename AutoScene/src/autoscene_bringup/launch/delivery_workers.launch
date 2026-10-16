@@ -1,0 +1,14 @@
+<launch>
+  <arg name="mode" default="hybrid" />
+  <arg name="ego_execution_mode" default="simulation" />
+  <group ns="autoscene">
+    <!-- ROS manager stays on system Python; GPU runtime uses the chosen env. -->
+    <node pkg="autoscene_runtime" type="scenario_runtime_node.py" name="scenario_runtime_node"
+          output="screen" required="true" launch-prefix="&quot;$(env AUTOSCENE_ALGO_PYTHON)&quot;" />
+    <node if="$(eval arg('mode') == 'hybrid')" pkg="autoscene_platform" type="platform_comm_node.py"
+          name="platform_comm_node" output="screen" />
+    <node if="$(eval arg('ego_execution_mode') == 'external')" pkg="autoscene_ego" type="ego_adapter_node.py"
+          name="ego_adapter_node" output="screen" />
+    <node pkg="autoscene_evaluation" type="evaluator_node.py" name="evaluator_node" output="screen" />
+  </group>
+</launch>

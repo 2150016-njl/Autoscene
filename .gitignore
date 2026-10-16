@@ -1,0 +1,45 @@
+# Data
+**/data/
+**/outputs/
+**/checkpoints/
+
+# ROS build files
+/AutoScene/build/
+/AutoScene/devel/
+/AutoScene/install/
+/AutoScene/logs/
+
+# Archives
+*.zip
+*.tar
+*.tar.gz
+*.7z
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+
+# Temporary files
+**/tmp/
+*.log
+*.tmp
+
+# Models and datasets
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.npy
+*.npz
+*.bag
+*.db3
+*.parquet
+
+# IDE
+.idea/
+.vscode/
+.DS_Store

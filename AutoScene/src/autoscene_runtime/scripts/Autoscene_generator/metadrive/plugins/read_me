@@ -1,0 +1,20 @@
+python -c "from metadrive.plugins.manager.osm_map_manager import OSMMapIO; OSMMapIO.convert_pickle_to_osm('/media/mj/EXTERNAL_USB/nuPlan_SD/mini_convert/mini_convert_7/sd_nuplan_mini_v1.1_0fb1ddb9c48e5b5b.pkl', 'metadrive/plugins/map_files/osm_scenario_0fb1ddb9c48e5b5b.osm', overwrite=True)"
+
+python metadrive/plugins/utils/add_osm_name_tags.py   metadrive/plugins/map_files/TesT_Field_Tongji_East_intersection.osm   metadrive/plugins/map_files/TesT_Field_Tongji_East_intersection_name.osm   --overwrite
+
+python metadrive/plugins/utils/add_osm_name_tags.py \
+>   metadrive/plugins/map_files/osm_scenario_0fb1ddb9c48e5b5b.osm \
+>   metadrive/plugins/map_files/osm_scenario_0fb1ddb9c48e5b5b_name.osm \
+>   --overwrite
+
+
+python metadrive/plugins/examples/drive_in_real_osm.py \
+  --use_custom_init \
+  --variant_seed 0 \
+  --num_variants 100 \
+  --max_steps 100 \
+  --top_down true \
+  --save_scenarios \
+  --scenario_dir scenario_record/ni_0714 \
+  --save_gif \
+  --gif_dir gif_record/ni_0714

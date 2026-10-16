@@ -1,0 +1,12 @@
+Package: autoscene-ui
+Version: 1.1.2
+Section: science
+Priority: optional
+Architecture: all
+Maintainer: AutoScene Team
+Depends: python3 (>= 3.8), python3-pyqt5, python3-yaml, python3-numpy
+Description: AutoScene ROS1 experiment manager desktop UI
+ PyQt5 desktop frontend for configuring and monitoring AutoScene experiments.
+ It connects to ROS1 through rosbridge and supports dataset visualization,
+ platform binding, virtual BV placement, experiment control and live metrics.
+ The websocket client is bundled for reliable offline installation.

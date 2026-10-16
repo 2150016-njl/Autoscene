@@ -1,0 +1,15 @@
+/* 让所有 node 显示自定义的 node_id 标签 */
+node[name]::label {
+    text: tag("name");
+    text-color: red;
+    font-size: 12;
+    text-anchor-horizontal: center;
+    text-anchor-vertical: above;
+}
+
+/* 让 node 显示为蓝色实心点 */
+node[name] {
+    symbol-shape: circle;
+    symbol-size: 6;
+    symbol-fill-color: cyan; /*青色*/
+}

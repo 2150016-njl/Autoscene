@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=AutoScene 实验管理器
+Name[en]=AutoScene Experiment Manager
+Comment=配置、启动并监控 AutoScene ROS1 实验
+Comment[en]=Configure, start and monitor AutoScene ROS1 experiments
+Exec=/usr/bin/autoscene-ui
+Icon=autoscene-ui
+Terminal=false
+Categories=Science;Development;Utility;
+StartupNotify=true

@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -e
+
+APP_DIR="/opt/autoscene-ui"
+BRIDGE_URL="${AUTOSCENE_BRIDGE:-ws://127.0.0.1:9090}"
+CONFIG_PATH="${AUTOSCENE_CONFIG:-${HOME}/AutoScene/src/autoscene_bringup/config/hybrid.yaml}"
+LOCAL_DATASET_PATH="${AUTOSCENE_DATASET:-${HOME}/AutoScene/data/tjwest260725intersection}"
+ROS_DATASET_PATH="${AUTOSCENE_ROS_DATASET:-${LOCAL_DATASET_PATH}}"
+
+args=(--backend rosbridge --bridge "${BRIDGE_URL}")
+
+if [[ -f "${CONFIG_PATH}" ]]; then
+    args+=(--config "${CONFIG_PATH}")
+fi
+
+if [[ -d "${LOCAL_DATASET_PATH}" ]]; then
+    args+=(--dataset "${LOCAL_DATASET_PATH}")
+fi
+args+=(--ros-dataset-path "${ROS_DATASET_PATH}")
+
+cd "${APP_DIR}"
+export PYTHONPATH="${APP_DIR}/vendor${PYTHONPATH:+:${PYTHONPATH}}"
+exec /usr/bin/python3 "${APP_DIR}/autoscene_ui.py" "${args[@]}" "$@"

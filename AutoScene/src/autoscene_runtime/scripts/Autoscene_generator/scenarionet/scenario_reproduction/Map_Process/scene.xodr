@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+    <header revMajor="1" revMinor="4" name="" version="1" date="2024-03-01T16:51:37" north="-1.7976931348623157e+308" south="1.7976931348623157e+308" east="-1.7976931348623157e+308" west="1.7976931348623157e+308" vendor="MathWorks">
+        <geoReference><![CDATA[+proj=tmerc +lat_0=31.29074147439128 +lon_0=121.2036545219309 +k=1 +x_0=0 +y_0=0 +datum=WGS84 +units=m +geoidgrids=egm96_15.gtx +vunits=m +no_defs ]]></geoReference>
+        <userData>
+            <vectorScene program="RoadRunner" version="R2023b Update 6 (1.7.6.0eb21f27ec3)"/>
+        </userData>
+    </header>
+</OpenDRIVE>

@@ -1,0 +1,9 @@
+# 实验 ID；为空时使用当前 project.experiment_id。
+string experiment_id
+# 导出目录；为空时使用 /record/output_dir。
+string output_path
+---
+bool success
+# 生成的评估摘要 JSON 路径。
+string summary_path
+string message

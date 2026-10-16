@@ -1,0 +1,13 @@
+name: autoscene-ui
+channels:
+  - defaults
+  - nodefaults
+dependencies:
+  # ROS Noetic 使用 Python 3.8；前端保持同一版本，既能走 rosbridge，
+  # 也便于在已安装 ROS1 的 Ubuntu 20.04 上排查兼容性。
+  - python=3.8.*
+  # 数据集 pickle 中包含 NumPy 数组；没有它界面只能显示示意地图。
+  - numpy=1.24.*
+  - pyqt=5.15.10
+  - pyyaml=6.0.2
+  - websocket-client=1.8.0

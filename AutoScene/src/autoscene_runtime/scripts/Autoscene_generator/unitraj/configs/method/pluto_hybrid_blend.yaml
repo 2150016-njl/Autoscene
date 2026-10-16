@@ -1,0 +1,22 @@
+# Overlay loaded AFTER method/Pluto.yaml and method/pluto_hybrid.yaml.
+# Existing Pluto and pluto_hybrid branches are unchanged; this file activates
+# only the separate normalized rule-biased scoring branch.
+planner_variant: pluto_hybrid_blend
+
+# Learned Pluto candidates:
+#   final = rule_weight * rule_norm + model_weight * model_norm
+# Both rule_norm and model_norm are min-max normalized to [0, 1] over the
+# currently selectable candidates.  The pair is normalized to sum to 1.
+# Keep the default deliberately rule-biased.
+blend_rule_score_weight: 0.8
+blend_model_score_weight: 0.2
+
+# Numerical behavior when every candidate has the same raw score.
+# 0.5 is neutral: neither score source gains an artificial advantage.
+blend_constant_score_value: 0.5
+blend_score_epsilon: 1.0e-6
+
+# OSM/safety candidates have no genuine Pluto pi-head logit.  The implementation
+# therefore scores them with normalized rule score only; no fake learned score is
+# injected into the final blend.  Their existing synthetic logits are retained
+# only for top-k admission / force-keep behavior inherited from pluto_hybrid.

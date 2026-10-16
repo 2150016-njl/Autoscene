@@ -1,0 +1,67 @@
+# exp setting
+exp_name: "sample"
+
+defaults:
+- method: Pluto # Backward-compatible default only; ego_method/adv_method may override independently.
+closeloop_mode: true # whether to evaluate in closeloop_simulation mode
+
+# Independent planner selection. Supported combinations: Pluto/Pluto, Pluto/VBD, VBD/Pluto, VBD/VBD.
+ego_method: pluto_hybrid
+adv_method: pluto_hybrid
+replan_frequency: 5 # 5 frames * 0.1 s = 0.5 s
+
+# Backend-managed VBD sampling cadence, in SIMULATION steps (0.1 s).
+# Start at 10 steps; adapt up to 30 using measured inference cost.
+# Pluto and 50-point trajectory export still run every replan_frequency steps.
+# Requests occur on planning ticks, so other intervals round up to a tick.
+# Reuse always advances the cached 80-point prediction to [age:age+50].
+# Refresh earlier if fewer than 50 genuine future points remain; never pad.
+vbd_inference_interval_steps: 10
+vbd_adaptive_cadence: true
+vbd_async_prefetch: true
+# Optional per-role overrides (null inherits the value above).
+# Both VBD roles share a joint sample: the faster configured role wins.
+vbd_ego_inference_interval_steps: null
+vbd_adv_inference_interval_steps: null
+
+adv_control: true # controls configured BV planners; VBD branch is unguided (planner_mode=max only)
+rl_finetuning_mode: false
+adv_num: 2
+
+seed: 0 # random seed
+debug: true # debug mode , false
+skip_load_data: True
+devices: [0]   # gpu ids
+
+# data related
+load_num_workers: 1 # number of workers for loading data
+#train_data_path: ["/media/mj/EXTERNAL_USB/nuPlan_SD/mini_convert/mini_convert_0"]   # list of paths to the training data
+train_data_path: ["/data_set/nuplan/mini_convert_7"]   # list of paths to the training data
+#val_data_path: ["/media/mj/EXTERNAL_USB/nuPlan_SD/mini_convert"]   # list of paths to the validation data
+val_data_path: ["/data_set/nuplan/mini_convert_7"]   # list of paths to the validation data
+eval_data_path:   "/home/nie/下载/场景生成运动平台/data_samples/tjwest260528obj_info_100/tjwest260528obj_info_1"
+#"/home/nie/下载/场景生成运动平台/data_samples/nuPlan_SD/pittsburgh_convert10000/pittsburgh_convert10000_0"
+#  "/home/nie/下载/场景生成运动平台/data_samples/tjwest260528obj_info_100/tjwest260528obj_info_1"
+#eval_data_path: "/media/mj/EXTERNAL_USB/nuPlan_SD/mini_convert"
+#eval_data_path: "/data_set/nuplan/mini_convert_7"
+#eval_data_path: "/home/mj/PycharmProjects/scenarionet-main/scenario_reproduction/tjwest260528"
+cache_path: "./cache"
+max_data_num: [null]   # maximum number of data for each training dataset, null means all data
+starting_frame: [0]   # history trajectory starts at this frame for each training dataset
+past_len: 21 # legacy/base setting; VBD online adapter uses method/VBD.yaml:vbd_history_steps=11
+future_len: 60 # base setting; method/VBD.yaml overrides model future_len=80 and exports first 50
+object_type: ['VEHICLE']  #, 'PEDESTRIAN', 'CYCLIST'] # object types included in the training set
+line_type: ['lane', 'stop_sign', 'road_edge', 'road_line', 'crosswalk', 'speed_bump'] # line type to be considered in the input
+masked_attributes: ['z_axis', 'size']   # attributes to be masked in the input
+trajectory_sample_interval: 1 # sample interval for the trajectory
+only_train_on_ego: true # only train on AV
+center_offset_of_map: [30.0, 0.0]   # center offset of the map
+use_cache: false # use cache for data loading
+overwrite_cache: false # overwrite existing cache
+store_data_in_memory: false # store data in memory
+
+# official evaluation
+nuscenes_dataroot: '/mnt/nas3_rcp_enac_u0900_vita_scratch/datasets/Prediction-Dataset/nuscenes/nuscenes_root'
+eval_nuscenes: false # whether to evaluate with nuscenes evaluation tool
+eval_waymo: false # whether to evaluate with waymo evaluation tool
+eval_argoverse2: false # whether to evaluate with argoverse evaluation tool

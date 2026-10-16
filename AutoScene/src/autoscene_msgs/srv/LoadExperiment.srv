@@ -1,0 +1,7 @@
+# 要加载的实验 YAML 配置路径。
+string config_path
+---
+# 是否加载成功。
+bool success
+# 结果或错误说明。
+string message

@@ -1,0 +1,46 @@
+# Overlay loaded on top of the existing method/Pluto.yaml.
+# Model/dataset/checkpoint/scoring/adversarial settings remain Pluto's settings.
+planner_variant: pluto_hybrid
+
+# Hybrid-candidate extension.
+osm_modal_candidates_enabled: true
+osm_modal_candidates_force_keep: true
+osm_modal_candidates_dt: 0.1
+osm_modal_candidates_logit: -4.0
+osm_modal_candidates_brake_logit: -8.0
+osm_modal_candidates_min_speed_mps: 0.0
+osm_modal_candidates_brake_decel_mps2: 2.0
+osm_modal_candidates_min_path_length_m: 2.0
+
+ego_osm_straight_target_speed_km_h: 40.0
+ego_osm_straight_accel_mps2: 1.5
+
+# Keep the reference implementation's OSM cut-in candidates available to the
+# existing Pluto adversarial scorer. These add candidates; they do not replace
+# Pluto's adversarial scoring/selection logic.
+osm_ego_lane_cutin_enabled: true
+osm_ego_lane_cutin_agent_id: adv_1
+osm_ego_lane_cutin_distance_m: [10.0, 14.0, 18.0]
+osm_ego_lane_cutin_follow_lanes: 5
+osm_ego_lane_cutin_forward_lookahead_m: [6.0, 10.0, 15.0, 20.0, 30.0]
+osm_ego_lane_cutin_lock_steps: 20
+
+osm_adversarial_cutin_distance_m: [10.0, 14.0, 18.0]
+osm_adversarial_cutin_heading_threshold: 0.8
+osm_adversarial_cutin_lock_steps: 15
+osm_adversarial_cutin_start_margin: 0.75
+osm_adversarial_force_target_cutin: true
+
+osm_brake_select_only_on_risk: true
+av1_blocked_ego_lane_cutin_bonus: 1.5
+av1_blocked_ego_lane_cutin_allow_unsafe: false
+av1_blocked_ego_lane_cutin_agent_id: adv_1
+av1_blocked_ego_lane_cutin_threat_agent_id: adv_2
+av1_blocked_ego_lane_cutin_threat_min_distance_m: 25.0
+av1_blocked_ego_lane_cutin_threat_max_distance_m: 40.0
+av1_blocked_ego_lane_cutin_threat_min_closing_mps: 0.0
+av1_blocked_ego_lane_cutin_min_collision_count: 1
+av1_blocked_ego_lane_cutin_prefer_margin: 0.05
+
+# Normal max planning must not force an unsafe cut-in above hard feasibility.
+av1_blocked_ego_lane_cutin_force_in_max: false

@@ -1,0 +1,5 @@
+# true 表示硬重置；当前 MVP 中主要用于状态标记，后续可扩展为仿真后端重建。
+bool hard
+---
+bool success
+string message

@@ -1,0 +1,15 @@
+way[feature_id]::label {
+    text: tag("feature_id");
+    text-color: red;
+    font-size: 34;
+    font-weight: bold;
+    text-position: line;
+    text-offset-y: 8;   /* 文字离开线条 */
+}
+way[highway=primary] {
+    color: #fb805f;      /* 线条颜色，也可以使用十六进制如 #FFFF00 */
+    width: 12;          /* 线条宽度，数值越大越粗 */
+    opacity: 1;       /* 不透明度 (0-1)，可选 */
+    z-index: 1000;      /* 确保它覆盖在其他普通道路之上 */
+    linecap: round;     /* 线条末端圆角，看起来更平滑 */
+}

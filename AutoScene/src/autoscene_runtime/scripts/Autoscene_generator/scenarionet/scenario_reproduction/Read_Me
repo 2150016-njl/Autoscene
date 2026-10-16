@@ -1,0 +1,25 @@
+数据处理一键流程：
+
+python scenario_reproduction/dongfeng.py
+
+默认输入：
+1、Obj_info_batch_1.csv
+2、TesT_Field_Tongji_West_with_relations.osm
+
+默认中间产物：
+1、obj_info_1.pkl
+2、map_features_polygon.pkl
+
+默认输出数据库：
+scenario_reproduction/tjwest260528obj_info_1/
+├── sd_tjwest260528obj_info_1.pkl
+└── dataset_summary.pkl
+
+可选：单独运行中间步骤
+1、obj_info.py 从 CSV 获取人车信息并生成 obj_info_1.pkl
+2、osm_scenario_west_polygon.py 从 OSM 获取带 polygon 的地图信息并生成 map_features_polygon.pkl
+3、osm_scenario_dongfeng.py 从 OSM 获取基础地图信息并生成 map_features_dongfeng.pkl
+
+metadrive渲染命令：
+python -m scenarionet.sim -d /home/mj/PycharmProjects/scenarionet-main/scenario_reproduction/tjwest260528obj_info_1 --render 2D
+python -m scenarionet.sim -d /home/mj/PycharmProjects/scenarionet-main/scenario_reproduction/tjwest260528obj_info_1 --render 3D

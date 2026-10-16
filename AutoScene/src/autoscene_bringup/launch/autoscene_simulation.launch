@@ -1,0 +1,38 @@
+<launch>
+  <arg
+    name="config"
+    default="$(find autoscene_bringup)/config/simulation.yaml"
+  />
+
+  <!--
+    只启动常驻 manager 并加载基础配置。
+    每次实验的 runtime、必要适配节点和 evaluator 由 manager 在独立终端启动。
+  -->
+  <rosparam
+    command="load"
+    file="$(arg config)"
+  />
+
+  <group ns="autoscene">
+    <node
+      pkg="autoscene_experiment"
+      type="experiment_manager_node.py"
+      name="experiment_manager_node"
+      output="screen"
+      required="true"
+    >
+      <param name="config_path" value="$(arg config)" />
+      <param name="expected_mode" value="simulation" />
+      <param name="manage_nodes" value="true" />
+      <param name="auto_start_after_prepare" value="false" />
+      <param name="interactive_console" value="true" />
+      <param name="launch_in_terminal" value="true" />
+      <param
+        name="worker_launch"
+        value="autoscene_experiment_nodes.launch"
+      />
+      <!-- auto 会依次查找 gnome-terminal、xterm、konsole。 -->
+      <param name="terminal_emulator" value="auto" />
+    </node>
+  </group>
+</launch>

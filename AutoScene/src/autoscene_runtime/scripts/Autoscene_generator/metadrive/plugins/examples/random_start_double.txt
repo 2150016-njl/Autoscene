@@ -1,0 +1,76 @@
+
+osm_scenario_ab498c6f16265755_直道双向.osm
+
+ego  "base_s": 0.0
+"lane_id": ["19832"]
+"destination": ["18413"],
+
+av1 同 "base_s": 10.0
+"lane_id": ["19832"]
+"destination": ["18413"],
+
+av2 异 "base_s": 20.0
+"lane_id": ["19810"]
+"destination": ["18512"],
+
+
+ego  "base_s": 20.0
+"lane_id": ["20232"]
+"destination": ["18413", "20210", "18852"],
+
+av1 同 "base_s": 30.0
+"lane_id": ["20232"]
+"destination": ["18413", "20210", "18852"],
+
+av2 异 "base_s": 30.0
+"lane_id": ["20118", "20119"]
+"destination": ["20002"],
+
+
+
+
+
+
+
+
+
+
+
+组合0
+ego  "base_s": 10.0
+"lane_id": ["19832", "19793"]
+"destination": ["20002", "20210", "18413"],
+
+av1 同 "base_s": 10.0
+"lane_id": ["19832", "19793"]
+"destination": ["20002", "20210", "18413"],
+
+av2 异 "base_s": 20.0
+"lane_id": ["19810", "19738"]
+"destination": ["18512", "18513", "18514"],
+
+组合1
+ego  "base_s": 10.0
+"lane_id": ["19832", "19793"]
+"destination": ["20002", "20210", "18413"] # straight
+
+av1 异 "base_s": 20.0
+"lane_id": ["19810", "19738"]
+"destination": ["18512", "18513", "18514"],
+
+av2 异 "base_s": 20.0
+"lane_id": ["19810", "19738"]
+"destination": ["18512", "18513", "18514"],
+
+组合2
+ego  "base_s": 10.0
+"lane_id": ["19832", "19793"]
+"destination": ["20002", "20210", "18413"],
+
+av1 同 "base_s": 10.0
+"lane_id": ["19832", "19793"]
+"destination": ["20002", "20210", "18413"],
+
+av2 同 "base_s": 10.0
+"lane_id": ["19832", "19793"]
+"destination": ["20002", "20210", "18413"],

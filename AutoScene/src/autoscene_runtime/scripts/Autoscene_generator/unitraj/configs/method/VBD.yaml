@@ -1,0 +1,58 @@
+# AutoScene VBD method config.
+# The checkpoint stays native VBD: 10 history + current, 80 future @ 0.1 s.
+# AutoScene exports only the first 50 future points after inference.
+model_name: VBD
+
+ckpt_path: "unitraj/checkpoints/vbd/epoch=15.ckpt"
+anchor_path: "unitraj/models/vbd/data/cluster_64_center_dict.pkl"
+
+# Online inference contract
+inference_mode: diffusion
+vbd_history_steps: 11
+output_future_steps: 50
+max_polylines: 256
+num_points_polyline: 30
+max_traffic_lights: 16
+map_radius_m: 150.0
+vbd_use_tqdm: false
+
+# Model architecture: must match the checkpoint.
+agents_len: 16
+future_len: 80
+action_len: 2
+encoder_layers: 6
+prediction_type: sample
+encoder_version: v2
+
+# Diffusion parameters: must match training/checkpoint config.
+diffusion_steps: 50
+schedule_type: cosine
+schedule_s: 0
+schedule_e: 1
+schedule_tau: 1
+
+action_mean: [0.0, 0.0]
+action_std: [1.0, 0.15]
+clamp_value: 5.0
+
+# Training/checkpoint fields retained because Lightning restores the model with cfg.
+use_wandb: false
+username: 1346037269-
+project: VBD
+max_epochs: 16
+learning_rate_sched: [10, 20, 30, 40, 50]
+optimizer: AdamW
+scheduler: multistep
+ewc_lambda: 2000
+grad_clip_norm: 5
+train_batch_size: 2
+eval_batch_size: 1
+init_from: null
+lr: 0.0002
+weight_decay: 0.01
+lr_warmup_step: 1000
+lr_step_freq: 1000
+lr_step_gamma: 0.98
+train_encoder: true
+train_denoiser: true
+train_predictor: true

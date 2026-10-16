@@ -1,0 +1,4 @@
+PyQt5>=5.14
+PyYAML>=5.3
+numpy>=1.21,<2
+websocket-client>=0.53   # 仅 --backend rosbridge 需要；Linux deb 已内置兼容版本

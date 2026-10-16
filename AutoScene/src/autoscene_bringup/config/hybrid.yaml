@@ -1,0 +1,142 @@
+project:
+  experiment_id: exp_hybrid_001
+
+runtime:
+  mode: hybrid
+  world_state_hz: 10
+  frame_id: map
+
+scenario:
+  source: unitraj_pluto
+  unitraj_root: ./src/autoscene_runtime/scripts/Autoscene_generator
+  unitraj_config: ./src/autoscene_runtime/scripts/Autoscene_generator/unitraj/configs/config.yaml
+  dataset_type: tjwest
+  dataset_path: ./data/TjEast_custom_0803
+  # hybrid 只允许 initial：ego 与选定 BV 使用人工确认的启动历史，未选背景仍按数据集。
+  history_source: initial
+  render: 2D
+  save_render_png: false
+  render_dir: ./outputs/render_hybrid_1
+  render_every_n_steps: 1
+  render_save_every_n_steps: 5
+
+ego:
+  id: ego_001
+  # simulation：由 Pluto/MetaDrive 执行；external：订阅 external/ego/state。
+  execution_mode: simulation
+  external_timeout_ms: 300
+  strict_external_feedback: true
+  startup_timeout_sec: 10.0
+  dropout_timeout_sec: 1.0
+  # external 状态坐标系原点在 AutoScene map 中的标定姿态。
+  origin:
+    x: 0.0
+    y: 0.0
+    yaw: 0.0
+  # history_source=initial 时必填；manager 会用人工确认值覆盖本参数。
+  initial:
+    x: 0.0
+    y: 0.0
+    heading: 0.0
+    speed: 0.0
+
+platform:
+  # 平台轨迹模式：
+  # initial_once：第0帧仅下发一次固定50点（匀加速后匀速直线），平台BV不参与Pluto规划。
+  # pluto_replan：保留原始warmup、Pluto重规划和周期下发行为。
+  trajectory_mode: pluto_replan
+
+  # 同一份配置支持两种运行方式：
+  # dry-run：receive_udp=false、send_udp=false、emulate_controlled_feedback=true
+  # hardware：receive_udp=true、send_udp=true、emulate_controlled_feedback=false
+  receive_udp: false
+  send_udp: false
+  emulate_controlled_feedback: true
+  strict_actual_feedback: true
+
+  startup_timeout_sec: 10.0
+  dropout_timeout_sec: 1.0
+  sim_state_timeout_sec: 1.0
+  feedback_timeout_sec: 1.0
+  target_timeout_sec: 1.0
+
+  # 两个平台共用本机 UDP socket，发送源地址固定为 local_ip:local_port。
+  local_ip: 192.168.88.3
+  local_port: 31100
+  send_rate_hz: 10
+
+  # G->A 固定标定：G 是经纬度解算出的高斯投影坐标，A 是 AutoScene world/map。
+  earth_to_autoscene:
+    tx: 3323589.478122620377690
+    ty: -1153682.864405207568780
+    yaw: 1.412418855771303
+
+  # 新平台轨迹 V2：50 点，0.1 s 间隔，x/y 为 double 大地投影坐标。
+  trajectory_dt_sec: 0.1
+  packet_point_num: 50
+  sender: 10
+  version: 241
+  message_id: 12
+
+  # 上游平台状态协议：176 字节应用层 payload，MessageID=11。
+  expected_feedback_message_id: 11
+
+  platforms:
+    - platform_id: platform_001
+      vehicle_id: agent_001
+      ip: 192.168.88.100
+      send_port: 31000
+      expected_remote_ip: 192.168.88.100
+      expected_remote_port: -1
+
+    - platform_id: platform_002
+      vehicle_id: agent_002
+      ip: 192.168.88.101
+      send_port: 31000
+      expected_remote_ip: 192.168.88.101
+      expected_remote_port: -1
+
+algorithm:
+  pluto_history_steps: 21
+  pluto_history_dt_sec: 0.1
+  initial_history_accel_mps2: 2.0
+  # 仅保存绑定运动平台的BV：
+  # 1) 第0帧固定启动50点；2) pluto_replan模式下第21帧首次Pluto 50点。
+  save_pluto_trajectory_csv: true
+  # A：AutoScene world/map坐标；G：大地投影坐标。两个CSV统一使用该配置。
+  trajectory_csv_coordinate: G
+  # 默认不保存ego、虚拟BV和后续stitched文件。
+  save_stitched_pluto_csv: true
+  pluto_trajectory_csv_dir: outputs/pluto_trajectory_csv
+
+evaluation:
+  include_background_vehicles: true
+  rate_hz: 10
+  collision_distance_m: 0.0
+  finalize_delay_sec: 0.5
+  auto_export: true
+  output_dir: ./outputs
+  fail_on_invalid_platform: true
+  platform_startup_grace_frames: 10
+  max_consecutive_invalid_platform_frames: 3
+
+record:
+  enable_rosbag: true
+  output_dir: ./outputs
+  topics:
+    - /autoscene/world/state
+    - /autoscene/ego/state
+    - /autoscene/ego/state_feedback
+    - /autoscene/agents/state
+    - /autoscene/agents/state_feedback
+    - /autoscene/planning/trajectories
+    - /autoscene/platform/target_trajectory
+    - /autoscene/platform/command_trajectory
+    - /autoscene/platform/trajectory_udp_payload
+    - /autoscene/platform/state
+    - /autoscene/platform/comm_status
+    - /autoscene/platform/ads_udp_decoded
+    - /autoscene/ego/adapter_status
+    - /autoscene/scenario/status
+    - /autoscene/simulation/status
+    - /autoscene/evaluation/metrics
