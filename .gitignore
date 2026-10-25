@@ -43,3 +43,34 @@ venv/
 .idea/
 .vscode/
 .DS_Store
+
+# Local data and outputs
+/AutoScene/data/
+/AutoScene/outputs/
+
+# ROS Catkin build artifacts
+/AutoScene/build/
+/AutoScene/devel/
+/AutoScene/install/
+/AutoScene/logs/
+
+# Python cache
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Archives
+*.zip
+
+# Frontend
+node_modules/
+dist/
+
+# Local secrets
+.env
+.env.*
+!.env.example
+
+# Local backup files
+*.bak
+*.bak.*

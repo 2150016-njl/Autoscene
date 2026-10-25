@@ -482,14 +482,18 @@ class SceneView(QGraphicsView):
         radius_px = 4.0
         pen_style = Qt.DashLine if kind == "start_target" else Qt.SolidLine
 
-        ring = self._scene.addEllipse(
-            center.x() - radius_px, center.y() - radius_px,
-            2.0 * radius_px, 2.0 * radius_px,
-            QPen(color, 2.6, pen_style), QBrush(Qt.NoBrush),
+        # Fixed-screen marker: use a local rectangle centred on the item origin.
+        # Its scene position is the exact pose centre; map zoom must not move it.
+        ring = QGraphicsEllipseItem(
+            -radius_px, -radius_px, 2.0 * radius_px, 2.0 * radius_px,
         )
+        ring.setPen(QPen(color, 2.6, pen_style))
+        ring.setBrush(QBrush(Qt.NoBrush))
         ring.setFlag(QGraphicsItem.ItemIgnoresTransformations, True)
+        ring.setPos(center)
         ring.setZValue(70)
         ring.setAcceptedMouseButtons(Qt.NoButton)
+        self._scene.addItem(ring)
 
         arrow_len_m = 4.5
         end = w2s(
